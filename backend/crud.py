@@ -27,6 +27,7 @@ def get_issue(db: Session, issue_id: int) -> SupportIssue | None:
 def list_issues(
     db: Session, *, skip: int = 0, limit: int = 100,
     q: str | None = None, priority: str | None = None, status: str | None = None,
+    assigned_engineer: str | None = None,
 ) -> list[SupportIssue]:
     statement = select(SupportIssue)
     if q is not None:
@@ -39,6 +40,10 @@ def list_issues(
         statement = statement.where(SupportIssue.priority == priority)
     if status is not None:
         statement = statement.where(SupportIssue.status == status)
+    if assigned_engineer is not None:
+        statement = statement.where(
+            func.lower(SupportIssue.assigned_engineer) == assigned_engineer.lower()
+        )
     statement = statement.order_by(SupportIssue.date_time_reported.desc(), SupportIssue.issue_id.desc())
     return list(db.scalars(statement.offset(skip).limit(limit)).all())
 

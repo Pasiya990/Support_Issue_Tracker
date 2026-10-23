@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Priority(str, Enum):
@@ -26,10 +26,17 @@ def clean_required_text(value: str) -> str:
     return value
 
 
+def clean_optional_text(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+    return value.strip() or None
+
+
 class IssueCreate(BaseModel):
     client_name: Annotated[str, Field(min_length=1, max_length=200)]
     issue_title: Annotated[str, Field(min_length=1, max_length=250)]
     description: Annotated[str, Field(min_length=1)]
+    assigned_engineer: Annotated[str | None, Field(max_length=200)] = None
     priority: Priority = Priority.MEDIUM
     status: IssueStatus = IssueStatus.OPEN
 
@@ -38,11 +45,23 @@ class IssueCreate(BaseModel):
     def trim_text(cls, value: object) -> object:
         return clean_required_text(value) if isinstance(value, str) else value
 
+    @field_validator("assigned_engineer", mode="before")
+    @classmethod
+    def trim_engineer(cls, value: object) -> object:
+        return clean_optional_text(value)
+
+    @model_validator(mode="after")
+    def resolved_issue_needs_engineer(self):
+        if self.status == IssueStatus.RESOLVED and not self.assigned_engineer:
+            raise ValueError("Select an assigned engineer before resolving an issue.")
+        return self
+
 
 class IssueUpdate(BaseModel):
     client_name: Annotated[str, Field(min_length=1, max_length=200)]
     issue_title: Annotated[str, Field(min_length=1, max_length=250)]
     description: Annotated[str, Field(min_length=1)]
+    assigned_engineer: Annotated[str | None, Field(max_length=200)] = None
     priority: Priority
     status: IssueStatus
 
@@ -50,6 +69,17 @@ class IssueUpdate(BaseModel):
     @classmethod
     def trim_text(cls, value: object) -> object:
         return clean_required_text(value) if isinstance(value, str) else value
+
+    @field_validator("assigned_engineer", mode="before")
+    @classmethod
+    def trim_engineer(cls, value: object) -> object:
+        return clean_optional_text(value)
+
+    @model_validator(mode="after")
+    def resolved_issue_needs_engineer(self):
+        if self.status == IssueStatus.RESOLVED and not self.assigned_engineer:
+            raise ValueError("Select an assigned engineer before resolving an issue.")
+        return self
 
 
 class StatusUpdate(BaseModel):
@@ -63,6 +93,7 @@ class IssueResponse(BaseModel):
     client_name: str
     issue_title: str
     description: str
+    assigned_engineer: str | None
     priority: Priority
     status: IssueStatus
     date_time_reported: datetime

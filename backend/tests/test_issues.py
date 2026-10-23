@@ -38,11 +38,11 @@ def test_list_pagination_get_and_not_found(client, create_issue):
 
 
 def test_update_status_delete_and_missing(client, create_issue):
-    original = create_issue(priority="High")
+    original = create_issue(priority="High", assigned_engineer="Casey Engineer")
     issue_id = original["issue_id"]
     updated = client.put(f"/api/issues/{issue_id}", json={
         "client_name": "Changed", "issue_title": "Changed title", "description": "Changed",
-        "priority": "Low", "status": "Open",
+        "assigned_engineer": "Casey Engineer", "priority": "Low", "status": "Open",
     }).json()
     assert updated["client_name"] == "Changed"
     assert updated["issue_id"] == issue_id
@@ -59,9 +59,45 @@ def test_update_status_delete_and_missing(client, create_issue):
     assert client.delete("/api/issues/999").status_code == 404
 
 
+def test_engineer_assignment_filter_and_resolution_rule(client, create_issue):
+    unassigned = create_issue(issue_title="Needs ownership")
+    assert unassigned["assigned_engineer"] is None
+    blocked = client.patch(
+        f"/api/issues/{unassigned['issue_id']}/status", json={"status": "Resolved"}
+    )
+    assert blocked.status_code == 422
+
+    assigned = create_issue(
+        issue_title="Assigned request", assigned_engineer="  Alex Engineer  "
+    )
+    assert assigned["assigned_engineer"] == "Alex Engineer"
+    result = client.get("/api/issues?assigned_engineer=alex%20engineer")
+    assert [issue["issue_id"] for issue in result.json()] == [assigned["issue_id"]]
+    result = client.get("/api/issues/filter?assigned_engineer=Alex%20Engineer")
+    assert len(result.json()) == 1
+
+    resolved = client.patch(
+        f"/api/issues/{assigned['issue_id']}/status", json={"status": "Resolved"}
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()["assigned_engineer"] == "Alex Engineer"
+
+    invalid_create = client.post("/api/issues", json={
+        "client_name": "Client", "issue_title": "No owner", "description": "Details",
+        "status": "Resolved",
+    })
+    assert invalid_create.status_code == 422
+
+    invalid_update = client.put(f"/api/issues/{assigned['issue_id']}", json={
+        "client_name": "Client", "issue_title": "Updated", "description": "Details",
+        "assigned_engineer": None, "priority": "Low", "status": "Resolved",
+    })
+    assert invalid_update.status_code == 422
+
+
 def test_search_and_filters(client, create_issue):
     create_issue(client_name="Acme Account", issue_title="Billing", priority="High")
-    create_issue(client_name="Other", issue_title="account failure", priority="High", status="Resolved")
+    create_issue(client_name="Other", issue_title="account failure", priority="High", status="Resolved", assigned_engineer="Riley")
     create_issue(client_name="Other", issue_title="Network", priority="Low")
     assert len(client.get("/api/issues/search?q= ACCOUNT ").json()) == 2
     assert len(client.get("/api/issues/search?q=billing").json()) == 1
@@ -87,7 +123,7 @@ def test_overdue_boundary_and_endpoint_and_stats(client, create_issue, monkeypat
 
     oldest = create_issue(priority="High", status="Open")
     create_issue(priority="High", status="In Progress")
-    create_issue(priority="High", status="Resolved")
+    create_issue(priority="High", status="Resolved", assigned_engineer="Jordan")
     create_issue(priority="Medium", status="Open")
     stats = client.get("/api/issues/stats").json()
     assert stats["total_issues"] == 4

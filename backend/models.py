@@ -19,3 +19,4 @@ class SupportIssue(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="Open")
     # SQLite does not preserve timezone metadata; services normalize loaded values to UTC.
     date_time_reported: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    assigned_engineer: Mapped[str | None] = mapped_column(String(200), nullable=True)

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 
 from backend.database import Base, engine
 from backend import models  # noqa: F401 - registers model metadata before create_all
@@ -16,6 +17,14 @@ def create_app() -> FastAPI:
     async def lifespan(application: FastAPI):
         # Registering models above ensures every table is present before serving requests.
         Base.metadata.create_all(bind=engine)
+        # create_all does not alter existing tables, so add this nullable field for
+        # existing installations while preserving their issue records.
+        columns = {column["name"] for column in inspect(engine).get_columns("support_issues")}
+        if "assigned_engineer" not in columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE support_issues ADD COLUMN assigned_engineer VARCHAR(200)")
+                )
         yield
 
     app = FastAPI(title="Support Issue Management System", version="1.0.0", lifespan=lifespan)

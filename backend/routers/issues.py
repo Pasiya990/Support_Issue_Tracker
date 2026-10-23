@@ -34,11 +34,17 @@ def search_issues(
     q: Annotated[str, Query(min_length=1, max_length=200)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    assigned_engineer: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
 ):
     query = q.strip()
     if not query:
         raise HTTPException(status_code=422, detail="Search query cannot be empty.")
-    return [issue_response_data(item) for item in crud.list_issues(db, q=query, skip=skip, limit=limit)]
+    engineer = assigned_engineer.strip() if assigned_engineer is not None else None
+    if assigned_engineer is not None and not engineer:
+        raise HTTPException(status_code=422, detail="Assigned engineer cannot be blank.")
+    return [issue_response_data(item) for item in crud.list_issues(
+        db, q=query, skip=skip, limit=limit, assigned_engineer=engineer
+    )]
 
 
 @router.get("/filter", response_model=list[IssueResponse])
@@ -47,15 +53,20 @@ def filter_issues(
     priority: Priority | None = None,
     status_filter: Annotated[IssueStatus | None, Query(alias="status")] = None,
     q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+    assigned_engineer: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
 ):
     query = q.strip() if q is not None else None
     if query == "":
         raise HTTPException(status_code=422, detail="Search query cannot be empty.")
+    engineer = assigned_engineer.strip() if assigned_engineer is not None else None
+    if assigned_engineer is not None and not engineer:
+        raise HTTPException(status_code=422, detail="Assigned engineer cannot be blank.")
     return [issue_response_data(item) for item in crud.list_issues(
         db, q=query, priority=priority.value if priority else None,
         status=status_filter.value if status_filter else None, skip=skip, limit=limit,
+        assigned_engineer=engineer,
     )]
 
 
@@ -77,14 +88,19 @@ def get_issues(
     q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     priority: Priority | None = None,
     status_filter: Annotated[IssueStatus | None, Query(alias="status")] = None,
+    assigned_engineer: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
 ):
     query = q.strip() if q is not None else None
     if query == "":
         raise HTTPException(status_code=422, detail="Search query cannot be empty.")
+    engineer = assigned_engineer.strip() if assigned_engineer is not None else None
+    if assigned_engineer is not None and not engineer:
+        raise HTTPException(status_code=422, detail="Assigned engineer cannot be blank.")
     return [issue_response_data(item) for item in crud.list_issues(
         db, skip=skip, limit=limit, q=query,
         priority=priority.value if priority else None,
         status=status_filter.value if status_filter else None,
+        assigned_engineer=engineer,
     )]
 
 
@@ -102,6 +118,11 @@ def replace_issue(issue_id: IssueId, payload: IssueUpdate, db: DbSession):
 @router.patch("/{issue_id}/status", response_model=IssueResponse)
 def change_issue_status(issue_id: IssueId, payload: StatusUpdate, db: DbSession):
     issue = require_issue(db, issue_id)
+    if payload.status == IssueStatus.RESOLVED and not issue.assigned_engineer:
+        raise HTTPException(
+            status_code=422,
+            detail="Select an assigned engineer before resolving this issue.",
+        )
     return issue_response_data(crud.update_status(db, issue, payload.status.value))
 
 
