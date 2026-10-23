@@ -33,6 +33,7 @@ def issue_response_data(issue: SupportIssue, now: datetime | None = None) -> dic
         "client_name": issue.client_name,
         "issue_title": issue.issue_title,
         "description": issue.description,
+        "assigned_engineer": issue.assigned_engineer,
         "priority": issue.priority,
         "status": issue.status,
         "date_time_reported": normalize_utc(issue.date_time_reported),
